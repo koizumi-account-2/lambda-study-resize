@@ -1,6 +1,6 @@
-import {Handler} from 'aws-lambda'
+import {S3Event, S3Handler} from 'aws-lambda'
  
- export const handler:Handler = (event)=>{
+ export const handler:S3Handler = (event:S3Event)=>{
      console.log("呼ばれました");
      console.log('%o',event)
  }
