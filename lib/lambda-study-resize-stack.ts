@@ -22,15 +22,21 @@ export class LambdaStudyResizeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY
     })
     
-    const resizeLambda = new NodejsFunction(this,`${PREFIX}-lambda-test`,{
-      functionName: `${PREFIX}-test`,
-      entry: path.join(REPOSITORY_TOP,"lambdas/test/src/index.ts"),
+    const resizeLambda = new NodejsFunction(this,`${PREFIX}-lambda-resize`,{
+      functionName: `${PREFIX}-resize`,
+      entry: path.join(REPOSITORY_TOP,"lambdas/resize/src/index.ts"),
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 128,
       timeout: cdk.Duration.seconds(30)
     })
 
-    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.LambdaDestination(resizeLambda)) 
+    s3Bucket.grantReadWrite(resizeLambda);
+    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.LambdaDestination(resizeLambda),
+      {
+        prefix: "original/",
+        suffix: ".png"
+      }
+    ) 
   }
 }
