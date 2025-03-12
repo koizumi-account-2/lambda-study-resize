@@ -4,12 +4,15 @@ import * as path from 'path';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 export interface LambdaStudyCloudfrontStackProps extends cdk.StackProps {
   
 }
 
 const PREFIX = 'lambda-study';
-// const REPOSITORY_TOP = path.resolve(__dirname,"../");
+const REPOSITORY_TOP = path.resolve(__dirname,"../");
 
 export class LambdaStudyCloudfrontStack extends cdk.Stack {
 
@@ -33,6 +36,23 @@ export class LambdaStudyCloudfrontStack extends cdk.Stack {
       },
       defaultRootObject: 'index.html',
     });
+
+
+    const invalidateLambda = new NodejsFunction(this,`${PREFIX}-invalidate-lambda`,{
+      functionName: `${PREFIX}-invalidate-lambda`,
+      entry: path.join(REPOSITORY_TOP,"lambdas/invalidate/src/index.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        DISTRIBUTION_ID: distribution.distributionId,
+      },
+    })
+
+    distribution.grantCreateInvalidation(invalidateLambda);
+
+    siteBucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.LambdaDestination(invalidateLambda)) 
 
     new cdk.CfnOutput(this, 'Hosting URL', {
       value: 'https://' + distribution.distributionDomainName
