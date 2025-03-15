@@ -3,7 +3,7 @@ import { SQSEvent, S3Event, SQSHandler } from 'aws-lambda';
 import path from 'path';
 import { getImageFromS3, putImageToS3 } from '../../common/src/index';
 
-const DEIRECTORY = "resized";
+const DEIRECTORY = "rotated";
 const s3Client = new S3Client();
  
 export const handler:SQSHandler = async (event:SQSEvent)=>{
@@ -16,19 +16,11 @@ export const handler:SQSHandler = async (event:SQSEvent)=>{
             console.log(`${bucketName}に${key}がuploadされました。`);
             const image = await getImageFromS3(bucketName,key,s3Client);
 
-            const width = image.getWidth();
-            const height = image.getHeight();
+            image.rotate(90);
 
-            console.log(`変更前のsize: ${width} ,${height}`);
-            const resizedWidth = Math.floor(width/2);
-            const resizedHeight = Math.floor(height/2);
-            console.log(`変更後のsize: ${resizedWidth} ,${resizedHeight}`);
-
-            image.resize(resizedWidth,resizedHeight);
-
-            // リサイズした画像をS3にアップロード
+            // S3にアップロード
             const parsedKey = path.parse(key);
-            const uploadKey = `${DEIRECTORY}/${parsedKey.name}-resize${parsedKey.ext}`;
+            const uploadKey = `${DEIRECTORY}/${parsedKey.name}-rotate${parsedKey.ext}`;
             const imageBuffer = await image.getBufferAsync(image.getMIME());
             console.log(`uploadKey:${uploadKey}, bucket:${bucketName}`);
             await putImageToS3(bucketName,uploadKey,imageBuffer,s3Client);
