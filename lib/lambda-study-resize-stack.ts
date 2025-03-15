@@ -26,6 +26,7 @@ export class LambdaStudyResizeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY
     })
     
+    /** ResizeLambda 定義*/
     const resizeLambda = new NodejsFunction(this,`${PREFIX}-lambda-resize`,{
       functionName: `${PREFIX}-resize`,
       entry: path.join(REPOSITORY_TOP,"lambdas/resize/src/index.ts"),
@@ -34,12 +35,12 @@ export class LambdaStudyResizeStack extends cdk.Stack {
       memorySize: 128,
       timeout: cdk.Duration.seconds(30)
     })
-
-    // DLQ
+    
+    // ResizeLambda用のDLQ
     const resizeDlq = new Queue(this,`${PREFIX}-queue-resize-dlq`,{
       queueName: `${PREFIX}-queue-resize-dlq`
     })
-    // SQS
+    // ResizeLambda用のSQS
     const resizeQueue = new Queue(this,`${PREFIX}-queue-resize`,{
       queueName: `${PREFIX}-queue-resize`,
       visibilityTimeout: cdk.Duration.seconds(300),
@@ -48,22 +49,60 @@ export class LambdaStudyResizeStack extends cdk.Stack {
         maxReceiveCount: 1
       }
     })
-    // SNS
+
+    /** InvertLambda 定義*/
+    const invertLambda = new NodejsFunction(this,`${PREFIX}-lambda-invert`,{
+      functionName: `${PREFIX}-invert`,
+      entry: path.join(REPOSITORY_TOP,"lambdas/invert/src/index.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(30)
+    })
+    // InvertLambda用のDLQ
+    const invertDlq = new Queue(this,`${PREFIX}-queue-invert-dlq`,{
+      queueName: `${PREFIX}-queue-invert-dlq`
+    })
+    // InvertLambda用のSQS
+    const invertQueue = new Queue(this,`${PREFIX}-queue-invert`,{
+      queueName: `${PREFIX}-queue-invert`,
+      visibilityTimeout: cdk.Duration.seconds(300),
+      deadLetterQueue: {
+        queue: invertDlq,
+        maxReceiveCount: 1
+      }
+    })
+
+    /** SNS 定義*/
     const snsTopic = new sns.Topic(this,`${PREFIX}-sns-topic`,{
       topicName: `${PREFIX}-sns-topic`,
       displayName: `${PREFIX}-sns-topic`
     })
-    // SNS -> SQS
+    // SNS -> ResizeLambda用のSQS
     snsTopic.addSubscription(new SqsSubscription(resizeQueue,{
       rawMessageDelivery: true
     }))
+    // SNS -> InvertLambda用のSQS
+    snsTopic.addSubscription(new SqsSubscription(invertQueue,{
+      rawMessageDelivery: true
+    }))
 
-    // SQS -> Lambda allow
+    /** ResizeLambda */
+    // SQS -> ResizeLambda allow
     resizeQueue.grantSendMessages(resizeLambda);
-    // SQS -> Lambda
+    // SQS -> ResizeLambda
     resizeLambda.addEventSource(new SqsEventSource(resizeQueue));
-    // Lambda -> S3 allow
+    // ResizeLambda -> S3 allow
     s3Bucket.grantReadWrite(resizeLambda);
+
+    /** InvertLambda */
+    // SQS -> InvertLambda allow
+    invertQueue.grantSendMessages(invertLambda);
+    // SQS -> InvertLambda
+    invertLambda.addEventSource(new SqsEventSource(invertQueue));
+    // InvertLambda -> S3 allow
+    s3Bucket.grantReadWrite(invertLambda);
+
     // S3 -> SNS
     s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.SnsDestination(snsTopic),
       {
