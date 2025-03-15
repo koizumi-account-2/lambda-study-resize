@@ -5,6 +5,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as path from 'path';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 export interface LambdaStudyResizeStackProps extends cdk.StackProps {
   
 }
@@ -31,8 +33,28 @@ export class LambdaStudyResizeStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30)
     })
 
+    // DLQ
+    const resizeDlq = new Queue(this,`${PREFIX}-queue-resize-dlq`,{
+      queueName: `${PREFIX}-queue-resize-dlq`
+    })
+    // SQS
+    const resizeQueue = new Queue(this,`${PREFIX}-queue-resize`,{
+      queueName: `${PREFIX}-queue-resize`,
+      visibilityTimeout: cdk.Duration.seconds(300),
+      deadLetterQueue: {
+        queue: resizeDlq,
+        maxReceiveCount: 1
+      }
+    })
+
+    // SQS -> Lambda allow
+    resizeQueue.grantSendMessages(resizeLambda);
+    // SQS -> Lambda
+    resizeLambda.addEventSource(new SqsEventSource(resizeQueue));
+    // Lambda -> S3 allow
     s3Bucket.grantReadWrite(resizeLambda);
-    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.LambdaDestination(resizeLambda),
+    // S3 -> SQS
+    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.SqsDestination(resizeQueue),
       {
         prefix: "original/",
         suffix: ".png"
