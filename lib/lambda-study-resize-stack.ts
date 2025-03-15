@@ -5,8 +5,10 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as path from 'path';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import * as sns from 'aws-cdk-lib/aws-sns';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { SqsSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 export interface LambdaStudyResizeStackProps extends cdk.StackProps {
   
 }
@@ -46,6 +48,15 @@ export class LambdaStudyResizeStack extends cdk.Stack {
         maxReceiveCount: 1
       }
     })
+    // SNS
+    const snsTopic = new sns.Topic(this,`${PREFIX}-sns-topic`,{
+      topicName: `${PREFIX}-sns-topic`,
+      displayName: `${PREFIX}-sns-topic`
+    })
+    // SNS -> SQS
+    snsTopic.addSubscription(new SqsSubscription(resizeQueue,{
+      rawMessageDelivery: true
+    }))
 
     // SQS -> Lambda allow
     resizeQueue.grantSendMessages(resizeLambda);
@@ -53,8 +64,8 @@ export class LambdaStudyResizeStack extends cdk.Stack {
     resizeLambda.addEventSource(new SqsEventSource(resizeQueue));
     // Lambda -> S3 allow
     s3Bucket.grantReadWrite(resizeLambda);
-    // S3 -> SQS
-    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.SqsDestination(resizeQueue),
+    // S3 -> SNS
+    s3Bucket.addEventNotification(s3.EventType.OBJECT_CREATED,new s3n.SnsDestination(snsTopic),
       {
         prefix: "original/",
         suffix: ".png"
