@@ -1,8 +1,7 @@
 import { PutObjectCommand, PutObjectCommandInput, S3Client } from '@aws-sdk/client-s3';
-import { GetObjectCommand, GetObjectCommandInput } from '@aws-sdk/client-s3';
 import { SQSEvent, S3Event, SQSHandler } from 'aws-lambda';
-import jimp from 'jimp';
 import path from 'path';
+import { getImageFromS3, putImageToS3 } from '../../common/src/index';
 
 const DEIRECTORY = "resized";
 const s3Client = new S3Client();
@@ -15,22 +14,8 @@ export const handler:SQSHandler = async (event:SQSEvent)=>{
             const key = s3Event?.s3?.object?.key;
             const bucketName = s3Event?.s3?.bucket?.name;
             console.log(`${bucketName}に${key}がuploadされました。`);
+            const image = await getImageFromS3(bucketName,key,s3Client);
 
-            // ファイルを取得
-            const input:GetObjectCommandInput={
-                Bucket:bucketName,
-                Key:key,
-            }
-            const command = new GetObjectCommand(input);
-            const {Body} = await s3Client.send(command);
-            if(!Body){
-                throw Error("ファイルが見つかりません");
-            }
-            const arrayBuffer = await Body.transformToByteArray();
-
-            // 画像をリサイズ
-            const bodyBuffer = Buffer.from(arrayBuffer);
-            const image = await jimp.read(bodyBuffer);
             const width = image.getWidth();
             const height = image.getHeight();
 
@@ -46,14 +31,7 @@ export const handler:SQSHandler = async (event:SQSEvent)=>{
             const uploadKey = `${DEIRECTORY}/${parsedKey.name}-resize${parsedKey.ext}`;
             const imageBuffer = await image.getBufferAsync(image.getMIME());
             console.log(`uploadKey:${uploadKey}, bucket:${bucketName}`);
-            const putCommandInput:PutObjectCommandInput={
-                Bucket:bucketName,
-                Key:uploadKey,
-                Body:imageBuffer,
-            }
-            const putCommand = new PutObjectCommand(putCommandInput);
-            await s3Client.send(putCommand);      
-        
+            await putImageToS3(bucketName,uploadKey,imageBuffer,s3Client);
         }
 
     }
